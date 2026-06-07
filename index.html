@@ -162,6 +162,23 @@
     .binary-result-desc{font-size:.72rem;color:#9aacc2;margin-top:3px;}
 
     select option{background:#0d1321;color:#c5d3e3;}
+
+    /* Countdown view */
+    .cd-wrap{padding:1rem;display:flex;flex-direction:column;gap:10px;}
+    .cd-title{font-size:.65rem;color:#6a7fa0;letter-spacing:.12em;text-transform:uppercase;padding:.4rem .2rem .2rem;font-weight:700;}
+    .cd-card{border-radius:14px;overflow:hidden;display:flex;align-items:stretch;min-height:70px;}
+    .cd-card-left{flex:1;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;gap:3px;}
+    .cd-card-name{font-size:1rem;font-weight:800;color:#fff;line-height:1.2;}
+    .cd-card-date{font-size:.72rem;color:rgba(255,255,255,.65);margin-top:2px;}
+    .cd-card-right{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px 18px;min-width:80px;}
+    .cd-card-num{font-size:2.4rem;font-weight:900;color:#fff;line-height:1;letter-spacing:-.03em;}
+    .cd-card-unit{font-size:.65rem;color:rgba(255,255,255,.7);font-weight:700;text-transform:uppercase;letter-spacing:.08em;}
+    .cd-card.cd-ok    {background:linear-gradient(135deg,#1a6b4a,#27ae60);}
+    .cd-card.cd-soon  {background:linear-gradient(135deg,#7a4a00,#f5a623);}
+    .cd-card.cd-urgent{background:linear-gradient(135deg,#7a1a2a,#e05c7a);}
+    .cd-card.cd-late  {background:linear-gradient(135deg,#3a0a15,#c0392b);}
+    .cd-card.cd-today {background:linear-gradient(135deg,#6a1a00,#e05c7a);}
+    .cd-empty{text-align:center;color:#2e3d5a;font-size:.88rem;padding:3rem 1rem;line-height:1.8;}
   </style>
 </head>
 <body>
@@ -192,6 +209,7 @@
   <button class="tab-btn"        id="tab-deleguer" >👤 Déléguer <span class="tab-badge" id="tb-delegate">0</span></button>
   <button class="tab-btn"        id="tab-eliminer" >🗑 Éliminer <span class="tab-badge" id="tb-eliminate">0</span></button>
   <button class="tab-btn"        id="tab-matrix"   >⊞ Matrice</button>
+  <button class="tab-btn"        id="tab-countdown">⏳ Échéances <span class="tab-badge" id="tb-countdown">0</span></button>
 </div>
 
 <!-- SAISIE -->
@@ -300,6 +318,11 @@
   </div>
 </div>
 
+<!-- ÉCHÉANCES -->
+<div class="view-section" id="vs-countdown">
+  <div id="cd-content"></div>
+</div>
+
 <!-- EDIT MODAL -->
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
@@ -338,8 +361,8 @@ let editId = null, editQ = 'do';
 const QCOLORS  = {do:'#e05c7a', plan:'#3dbfa8', delegate:'#f5a623', eliminate:'#9b8fd4'};
 const QLABELS  = {do:'Urgent & Important', plan:'Important · Pas urgent', delegate:'Urgent · Pas important', eliminate:'Ni urgent · Ni important'};
 const QSHORT   = {do:'✅ Faire', plan:'📅 Planifier', delegate:'👤 Déléguer', eliminate:'🗑️ Éliminer'};
-const VIEWS    = {saisie:'vs-saisie', toutes:'vs-toutes', faire:'vs-faire', planifier:'vs-planifier', deleguer:'vs-deleguer', eliminer:'vs-eliminer', matrix:'vs-matrix'};
-const TABS     = {saisie:'tab-saisie', toutes:'tab-toutes', faire:'tab-faire', planifier:'tab-planifier', deleguer:'tab-deleguer', eliminer:'tab-eliminer', matrix:'tab-matrix'};
+const VIEWS    = {saisie:'vs-saisie', toutes:'vs-toutes', faire:'vs-faire', planifier:'vs-planifier', deleguer:'vs-deleguer', eliminer:'vs-eliminer', matrix:'vs-matrix', countdown:'vs-countdown'};
+const TABS     = {saisie:'tab-saisie', toutes:'tab-toutes', faire:'tab-faire', planifier:'tab-planifier', deleguer:'tab-deleguer', eliminer:'tab-eliminer', matrix:'tab-matrix', countdown:'tab-countdown'};
 const sortables = {};
 
 /* ── STORAGE ── */
@@ -570,6 +593,66 @@ function allTaskRow(t) {
   '</div>';
 }
 
+/* ── RENDER COUNTDOWN ── */
+function renderCountdown() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const withDl = tasks.filter(t => t.deadline).map(t => {
+    const dl = new Date(t.deadline); dl.setHours(0,0,0,0);
+    const diff = Math.round((dl - today) / 86400000);
+    return { ...t, diff, dl };
+  }).sort((a,b) => a.diff - b.diff);
+
+  document.getElementById('tb-countdown').textContent = withDl.length;
+
+  const el = document.getElementById('cd-content');
+  if (withDl.length === 0) {
+    el.innerHTML = '<div class="cd-empty">📆 Aucune date limite définie.<br>Ajoutez un "Au plus tard" sur vos tâches.</div>';
+    return;
+  }
+
+  const upcoming = withDl.filter(t => t.diff >= 0);
+  const past     = withDl.filter(t => t.diff < 0);
+
+  function cardClass(diff) {
+    if (diff < 0)   return 'cd-late';
+    if (diff === 0) return 'cd-today';
+    if (diff <= 7)  return 'cd-urgent';
+    if (diff <= 30) return 'cd-soon';
+    return 'cd-ok';
+  }
+
+  function cardHtml(t) {
+    const dateStr = t.dl.toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'long', year:'numeric'});
+    const num  = Math.abs(t.diff);
+    const unit = num <= 1 ? 'jour' : 'jours';
+    const numDisplay = t.diff === 0 ? "Auj." : num;
+    const unitDisplay = t.diff === 0 ? '' : unit;
+    const qLabel = {do:'✅ Faire', plan:'📅 Planifier', delegate:'👤 Déléguer', eliminate:'🗑️ Éliminer'}[t.quadrant];
+    return '<div class="cd-card ' + cardClass(t.diff) + '">' +
+      '<div class="cd-card-left">' +
+        '<div class="cd-card-name">' + esc(t.text) + '</div>' +
+        '<div class="cd-card-date">' + dateStr + ' · ' + qLabel + '</div>' +
+      '</div>' +
+      '<div class="cd-card-right">' +
+        '<div class="cd-card-num">' + numDisplay + '</div>' +
+        '<div class="cd-card-unit">' + unitDisplay + (t.diff < 0 ? ' passés' : '') + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  let html = '<div class="cd-wrap">';
+  if (upcoming.length) {
+    html += '<div class="cd-title">À venir</div>';
+    html += upcoming.map(cardHtml).join('');
+  }
+  if (past.length) {
+    html += '<div class="cd-title" style="color:#e05c7a;">⚠ Passées</div>';
+    html += past.map(cardHtml).join('');
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
 /* ── MAIN RENDER ── */
 function render() {
   const n = tasks.length;
@@ -602,6 +685,7 @@ function render() {
       '</div>').join('');
     initSortable('mt-' + q, q);
   });
+  renderCountdown();
 }
 
 /* ── EVENT LISTENERS ── */
@@ -612,6 +696,7 @@ document.getElementById('tab-planifier').onclick = () => switchView('planifier')
 document.getElementById('tab-deleguer').onclick  = () => switchView('deleguer');
 document.getElementById('tab-eliminer').onclick  = () => switchView('eliminer');
 document.getElementById('tab-matrix').onclick    = () => switchView('matrix');
+document.getElementById('tab-countdown').onclick = () => switchView('countdown');
 
 document.getElementById('btn-add').onclick = addTask;
 document.getElementById('task-input').onkeydown = e => { if (e.key === 'Enter') addTask(); };
